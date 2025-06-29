@@ -1,0 +1,15 @@
+{
+    "appName": "JsonToolsTest",
+    "version": "1.0.0",
+    "enabled": true,
++   "maxItems": 10,
+    "features": [
+        "validation",
+        "parsing",
+        "export"
+    ],
+    "settings": {
+        "logLevel": "info",
+        "retryCount": 3
+    }
+}
