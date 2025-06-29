@@ -2,11 +2,11 @@
     "appName": "JsonToolsTest",
     "version": "1.0.0",
     "enabled": true,
-+   "maxItems": 10,
+p   "maxItems": 10,
     "features": [
         "validation",
         "parsing",
-        "export"
+b        "export"
     ],
     "settings": {
         "logLevel": "info",

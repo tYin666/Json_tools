@@ -7,136 +7,402 @@ def check_json_file(filepath):
         with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # First, try to parse the JSON
+        # First, try to parse the JSON to get the first error
+        first_error = None
         try:
             json.loads(content)
             print("✅ JSON is valid.")
             return
         except json.JSONDecodeError as e:
-            print("❌ JSON is invalid!")
-            print(f"Error: {e.msg}")
-            print(f"Line: {e.lineno}, Column: {e.colno}")
+            first_error = e
+        
+        print("❌ JSON is invalid!")
+        print("=" * 50)
+        
+        # Find ALL errors using comprehensive analysis
+        all_errors = find_all_json_errors(content)
+        
+        if all_errors:
+            print(f"Found {len(all_errors)} error(s):")
+            print_errors_table(all_errors)
+            print_detailed_errors(all_errors)
+        else:
+            # Fallback to original error if comprehensive analysis fails
+            print(f"Error: {first_error.msg}")
+            print(f"Line: {first_error.lineno}, Column: {first_error.colno}")
             
-            # Get the lines of the file
             lines = content.splitlines()
-            
-            if 1 <= e.lineno <= len(lines):
-                problematic_line = lines[e.lineno - 1]
-                print(f"Problematic line: {problematic_line}")
-                
-                # Highlight the error position
-                if e.colno > 0:
-                    pointer = ' ' * (e.colno - 1) + '^'
-                    print(f"Error position:   {pointer}")
-                
-                # Additional analysis for common issues
-                analyze_common_issues(lines, e.lineno - 1, e.colno)
-            else:
-                print("Could not determine the problematic line.")
+            if 1 <= first_error.lineno <= len(lines):
+                print(f"Problematic line: {lines[first_error.lineno - 1]}")
     
     except FileNotFoundError:
         print(f"❌ Error: File '{filepath}' not found.")
     except Exception as e:
         print(f"❌ Error reading file: {e}")
 
-def analyze_common_issues(lines, line_index, col_index):
-    """Analyze common JSON syntax issues"""
-    if line_index < 0 or line_index >= len(lines):
-        return
+def find_all_json_errors(content):
+    """Find all JSON syntax errors in the content"""
+    errors = []
+    lines = content.splitlines()
     
-    current_line = lines[line_index]
+    # Check each line for common JSON syntax errors
+    for line_num, line in enumerate(lines, 1):
+        line_errors = analyze_line_for_errors(line, line_num, lines)
+        errors.extend(line_errors)
     
-    print("\n🔍 Additional Analysis:")
+    # Check for structural issues
+    structural_errors = check_json_structure(lines)
+    errors.extend(structural_errors)
     
-    # Check for invalid characters at the beginning of lines
-    invalid_chars = re.findall(r'^[\s]*[+\-*/@#$%^&()=<>!]', current_line)
-    if invalid_chars:
-        print(f"   • Found invalid character '{invalid_chars[0].strip()}' at the beginning of the line")
-        print("   • This character is not valid in JSON format")
+    # Sort errors by line number
+    errors.sort(key=lambda x: (x['line'], x['column']))
     
-    # Check for missing quotes around property names
-    unquoted_props = re.findall(r'^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', current_line)
-    if unquoted_props:
-        print(f"   • Property name '{unquoted_props[0]}' should be quoted: \"{unquoted_props[0]}\"")
+    return errors
+
+def analyze_line_for_errors(line, line_num, all_lines):
+    """Analyze a single line for JSON syntax errors"""
+    errors = []
+    stripped_line = line.strip()
+    
+    if not stripped_line or stripped_line.startswith('//'):
+        return errors
+    
+    # Check for invalid characters at the beginning of property lines
+    invalid_start_pattern = r'^(\s*)([a-zA-Z+\-*/@#$%^&()=<>!]+)\s*"'
+    match = re.match(invalid_start_pattern, line)
+    if match:
+        invalid_char = match.group(2)
+        if not invalid_char.startswith('"'):
+            errors.append({
+                'line': line_num,
+                'column': len(match.group(1)) + 1,
+                'message': f'Invalid character "{invalid_char}" before property name',
+                'line_content': line.rstrip(),
+                'suggestion': f'Remove "{invalid_char}" - property names should start with quotes'
+            })
+    
+    # Check for standalone invalid characters at line start
+    standalone_invalid = re.match(r'^(\s*)([+\-*/@#$%^&()=<>!]+)\s', line)
+    if standalone_invalid:
+        invalid_char = standalone_invalid.group(2)
+        errors.append({
+            'line': line_num,
+            'column': len(standalone_invalid.group(1)) + 1,
+            'message': f'Invalid character "{invalid_char}" in JSON',
+            'line_content': line.rstrip(),
+            'suggestion': f'Remove "{invalid_char}" - not valid in JSON syntax'
+        })
+    
+    # Check for unquoted property names
+    unquoted_prop = re.match(r'^(\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:', line)
+    if unquoted_prop and not line.strip().startswith('"'):
+        prop_name = unquoted_prop.group(2)
+        errors.append({
+            'line': line_num,
+            'column': len(unquoted_prop.group(1)) + 1,
+            'message': f'Property name "{prop_name}" is not quoted',
+            'line_content': line.rstrip(),
+            'suggestion': f'Change {prop_name} to "{prop_name}"'
+        })
+    
+    # Check for single quotes
+    if "'" in line and not line.strip().startswith('//'):
+        single_quote_pos = line.find("'")
+        errors.append({
+            'line': line_num,
+            'column': single_quote_pos + 1,
+            'message': 'Single quotes are not allowed in JSON',
+            'line_content': line.rstrip(),
+            'suggestion': 'Use double quotes (") instead of single quotes (\')' 
+        })
     
     # Check for trailing commas
-    if re.search(r',\s*[}\]]', current_line):
-        print("   • Found trailing comma before closing bracket/brace")
+    if re.search(r',\s*[}\]]', line):
+        comma_pos = line.rfind(',')
+        errors.append({
+            'line': line_num,
+            'column': comma_pos + 1,
+            'message': 'Trailing comma before closing bracket/brace',
+            'line_content': line.rstrip(),
+            'suggestion': 'Remove the trailing comma'
+        })
     
-    # Check for missing commas
-    if line_index < len(lines) - 1:
-        next_line = lines[line_index + 1].strip()
-        if (current_line.strip().endswith('}') or current_line.strip().endswith(']') or 
-            current_line.strip().endswith('"') or current_line.strip().endswith('true') or
-            current_line.strip().endswith('false') or current_line.strip().endswith('null') or
-            re.search(r'\d$', current_line.strip())):
-            if next_line.startswith('"') or next_line.startswith('{') or next_line.startswith('['):
-                if not current_line.strip().endswith(','):
-                    print("   • Missing comma at the end of this line")
+    # Check for missing commas (compare with next line)
+    if line_num < len(all_lines):
+        current_ends_with_value = (
+            stripped_line.endswith('}') or stripped_line.endswith(']') or 
+            stripped_line.endswith('"') or stripped_line.endswith('true') or
+            stripped_line.endswith('false') or stripped_line.endswith('null') or
+            re.search(r'\d$', stripped_line)
+        )
+        
+        next_line = all_lines[line_num].strip() if line_num < len(all_lines) else ""
+        next_starts_with_property = (
+            next_line.startswith('"') or 
+            re.match(r'^[a-zA-Z_]', next_line)
+        )
+        
+        if (current_ends_with_value and next_starts_with_property and 
+            not stripped_line.endswith(',') and 
+            not next_line.startswith('}') and not next_line.startswith(']')):
+            errors.append({
+                'line': line_num,
+                'column': len(line.rstrip()),
+                'message': 'Missing comma after value',
+                'line_content': line.rstrip(),
+                'suggestion': 'Add a comma at the end of this line'
+            })
     
-    # Check for single quotes instead of double quotes
-    if "'" in current_line:
-        print("   • JSON requires double quotes (\"), not single quotes (')")
+    # Check for comments
+    if '//' in line or '/*' in line:
+        comment_pos = max(line.find('//'), line.find('/*'))
+        if comment_pos >= 0:
+            errors.append({
+                'line': line_num,
+                'column': comment_pos + 1,
+                'message': 'Comments are not allowed in JSON',
+                'line_content': line.rstrip(),
+                'suggestion': 'Remove the comment'
+            })
     
-    # Check for comments (not allowed in JSON)
-    if '//' in current_line or '/*' in current_line:
-        print("   • Comments are not allowed in JSON format")
-    
-    # Suggest fixes for common issues
-    print("\n💡 Suggested fixes:")
-    
-    # Fix for the + sign issue
-    if '+' in current_line and not current_line.strip().startswith('"'):
-        fixed_line = re.sub(r'^\s*\+\s*', '', current_line)
-        print(f"   • Remove the '+' character:")
-        print(f"     Before: {current_line}")
-        print(f"     After:  {fixed_line}")
-    
-    # Fix for unquoted property names
-    if unquoted_props:
-        fixed_line = re.sub(r'^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'"\1":', current_line)
-        print(f"   • Quote the property name:")
-        print(f"     Before: {current_line}")
-        print(f"     After:  {fixed_line}")
+    return errors
 
-def validate_json_structure(filepath):
-    """Additional validation for JSON structure"""
+def print_errors_table(errors):
+    """Print errors in a formatted table"""
+    print("=" * 120)
+    print("📊 ERROR SUMMARY TABLE")
+    print("=" * 120)
+    
+    # Table headers
+    headers = ["ID", "Line", "Col", "Error Type", "Issue Description", "Severity"]
+    col_widths = [4, 6, 5, 20, 50, 10]
+    
+    # Print header
+    header_row = "| "
+    for i, (header, width) in enumerate(zip(headers, col_widths)):
+        header_row += f"{header:<{width}} | "
+    print(header_row)
+    
+    # Print separator
+    separator = "+"
+    for width in col_widths:
+        separator += "-" * (width + 2) + "+"
+    print(separator)
+    
+    # Print each error row
+    for i, error in enumerate(errors, 1):
+        error_type = classify_error_type(error['message'])
+        severity = get_error_severity(error['message'])
+        description = truncate_text(error['message'], 48)
+        
+        row = f"| {i:<4} | {error['line']:<6} | {error['column']:<5} | {error_type:<20} | {description:<50} | {severity:<10} |"
+        print(row)
+    
+    print(separator)
+    print(f"Total Errors: {len(errors)}")
+    print()
+
+def print_detailed_errors(errors):
+    """Print detailed error information"""
+    print("=" * 80)
+    print("🔍 DETAILED ERROR ANALYSIS")
+    print("=" * 80)
+    
+    for i, error in enumerate(errors, 1):
+        print(f"\n📍 Error #{i:02d} Details:")
+        print(f"   ├─ Location: Line {error['line']}, Column {error['column']}")
+        print(f"   ├─ Type: {classify_error_type(error['message'])}")
+        print(f"   ├─ Issue: {error['message']}")
+        print(f"   ├─ Content: {error['line_content']}")
+        
+        # Show error position with pointer
+        if error['column'] > 0 and len(error['line_content']) >= error['column']:
+            pointer = ' ' * (len("   ├─ Content: ") + error['column'] - 1) + '↑'
+            print(f"   ├─ Position:{pointer}")
+        
+        if error.get('suggestion'):
+            print(f"   └─ 💡 Fix: {error['suggestion']}")
+        else:
+            print(f"   └─ (No automatic fix available)")
+
+def classify_error_type(message):
+    """Classify error into categories for the table"""
+    message_lower = message.lower()
+    
+    if 'invalid character' in message_lower:
+        return "INVALID_CHAR"
+    elif 'not quoted' in message_lower or 'property name' in message_lower:
+        return "UNQUOTED_PROPERTY"
+    elif 'single quotes' in message_lower:
+        return "QUOTE_TYPE"
+    elif 'trailing comma' in message_lower:
+        return "TRAILING_COMMA"
+    elif 'missing comma' in message_lower:
+        return "MISSING_COMMA"
+    elif 'comment' in message_lower:
+        return "COMMENT"
+    elif 'bracket' in message_lower or 'brace' in message_lower:
+        return "BRACKET_MISMATCH"
+    elif 'unclosed' in message_lower:
+        return "UNCLOSED_BRACKET"
+    else:
+        return "OTHER"
+
+def get_error_severity(message):
+    """Determine error severity"""
+    message_lower = message.lower()
+    
+    # Critical errors that completely break JSON parsing
+    critical_keywords = ['invalid character', 'unmatched', 'unclosed', 'mismatched']
+    if any(keyword in message_lower for keyword in critical_keywords):
+        return "CRITICAL"
+    
+    # Warning-level errors that are bad practice but might not always break parsing
+    warning_keywords = ['trailing comma', 'comment']
+    if any(keyword in message_lower for keyword in warning_keywords):
+        return "WARNING"
+    
+    # High priority errors that should be fixed
+    return "HIGH"
+
+def truncate_text(text, max_length):
+    """Truncate text to fit in table column"""
+    if len(text) <= max_length:
+        return text
+    return text[:max_length-3] + "..."
+
+def check_json_structure(lines):
+    """Check for structural issues like unmatched brackets"""
+    errors = []
+    bracket_stack = []
+    
+    for line_num, line in enumerate(lines, 1):
+        for col_num, char in enumerate(line, 1):
+            if char in '{[':
+                bracket_stack.append((char, line_num, col_num))
+            elif char in '}]':
+                if not bracket_stack:
+                    errors.append({
+                        'line': line_num,
+                        'column': col_num,
+                        'message': f'Unmatched closing bracket "{char}"',
+                        'line_content': line.rstrip(),
+                        'suggestion': f'Remove this "{char}" or add matching opening bracket'
+                    })
+                else:
+                    opening_char, opening_line, opening_col = bracket_stack.pop()
+                    if (char == '}' and opening_char != '{') or (char == ']' and opening_char != '['):
+                        errors.append({
+                            'line': line_num,
+                            'column': col_num,
+                            'message': f'Mismatched bracket: "{opening_char}" at line {opening_line} vs "{char}" at line {line_num}',
+                            'line_content': line.rstrip(),
+                            'suggestion': f'Change "{char}" to match "{opening_char}" or fix the opening bracket'
+                        })
+    
+    # Check for unclosed brackets
+    for opening_char, line_num, col_num in bracket_stack:
+        closing_char = '}' if opening_char == '{' else ']'
+        errors.append({
+            'line': line_num,
+            'column': col_num,
+            'message': f'Unclosed bracket "{opening_char}"',
+            'line_content': lines[line_num - 1].rstrip() if line_num <= len(lines) else '',
+            'suggestion': f'Add closing "{closing_char}" bracket'
+        })
+    
+    return errors
+    """Check for structural issues like unmatched brackets"""
+    errors = []
+    bracket_stack = []
+    
+    for line_num, line in enumerate(lines, 1):
+        for col_num, char in enumerate(line, 1):
+            if char in '{[':
+                bracket_stack.append((char, line_num, col_num))
+            elif char in '}]':
+                if not bracket_stack:
+                    errors.append({
+                        'line': line_num,
+                        'column': col_num,
+                        'message': f'Unmatched closing bracket "{char}"',
+                        'line_content': line.rstrip(),
+                        'suggestion': f'Remove this "{char}" or add matching opening bracket'
+                    })
+                else:
+                    opening_char, opening_line, opening_col = bracket_stack.pop()
+                    if (char == '}' and opening_char != '{') or (char == ']' and opening_char != '['):
+                        errors.append({
+                            'line': line_num,
+                            'column': col_num,
+                            'message': f'Mismatched bracket: "{opening_char}" at line {opening_line} vs "{char}" at line {line_num}',
+                            'line_content': line.rstrip(),
+                            'suggestion': f'Change "{char}" to match "{opening_char}" or fix the opening bracket'
+                        })
+    
+    # Check for unclosed brackets
+    for opening_char, line_num, col_num in bracket_stack:
+        closing_char = '}' if opening_char == '{' else ']'
+        errors.append({
+            'line': line_num,
+            'column': col_num,
+            'message': f'Unclosed bracket "{opening_char}"',
+            'line_content': lines[line_num - 1].rstrip() if line_num <= len(lines) else '',
+            'suggestion': f'Add closing "{closing_char}" bracket'
+        })
+    
+    return errors
+
+def validate_json_with_fixes(filepath):
+    """Show what the file would look like with suggested fixes"""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+            content = f.read()
         
-        print(f"\n📊 File Analysis:")
-        print(f"   • Total lines: {len(lines)}")
+        errors = find_all_json_errors(content)
+        if not errors:
+            return
         
-        bracket_stack = []
-        for i, line in enumerate(lines, 1):
-            line = line.strip()
-            if not line or line.startswith('//'):
-                continue
+        print("\n" + "=" * 50)
+        print("🔧 SUGGESTED CORRECTIONS:")
+        print("=" * 50)
+        
+        lines = content.splitlines()
+        fixed_lines = lines.copy()
+        
+        # Apply fixes (in reverse order to maintain line numbers)
+        for error in reversed(errors):
+            line_idx = error['line'] - 1
+            if line_idx < len(fixed_lines):
+                line = fixed_lines[line_idx]
                 
-            for char in line:
-                if char in '{[':
-                    bracket_stack.append((char, i))
-                elif char in '}]':
-                    if not bracket_stack:
-                        print(f"   • Unmatched closing bracket '{char}' at line {i}")
-                        return False
-                    opening, _ = bracket_stack.pop()
-                    if (char == '}' and opening != '{') or (char == ']' and opening != '['):
-                        print(f"   • Mismatched brackets at line {i}")
-                        return False
+                # Apply specific fixes based on error type
+                if 'Invalid character' in error['message'] and 'before property name' in error['message']:
+                    # Remove invalid characters before property names
+                    fixed_line = re.sub(r'^(\s*)[a-zA-Z+\-*/@#$%^&()=<>!]+\s*(")', r'\1\2', line)
+                    fixed_lines[line_idx] = fixed_line
+                    
+                elif 'Invalid character' in error['message'] and 'in JSON' in error['message']:
+                    # Remove standalone invalid characters
+                    fixed_line = re.sub(r'^(\s*)[+\-*/@#$%^&()=<>!]+\s*', r'\1', line)
+                    fixed_lines[line_idx] = fixed_line
         
-        if bracket_stack:
-            unclosed = bracket_stack[-1]
-            print(f"   • Unclosed bracket '{unclosed[0]}' from line {unclosed[1]}")
-            return False
+        # Show the corrected version
+        print("Here's what your JSON should look like:")
+        print("-" * 30)
+        for i, line in enumerate(fixed_lines, 1):
+            print(f"{i:2}: {line}")
         
-        print("   • Bracket structure appears correct")
-        return True
-        
+        # Try to validate the corrected version
+        try:
+            corrected_content = '\n'.join(fixed_lines)
+            json.loads(corrected_content)
+            print("\n✅ The corrected version is valid JSON!")
+        except json.JSONDecodeError as e:
+            print(f"\n⚠️  The corrected version still has issues: {e.msg}")
+            
     except Exception as e:
-        print(f"   • Could not analyze structure: {e}")
-        return False
+        print(f"Error generating corrections: {e}")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
@@ -148,4 +414,4 @@ if __name__ == "__main__":
         print("=" * 40)
         
         check_json_file(filepath)
-        validate_json_structure(filepath)
+        validate_json_with_fixes(filepath)
