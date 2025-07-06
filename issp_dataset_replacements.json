@@ -1,0 +1,52 @@
+{
+    "version": "2.0",
+    "description": "ISSP_dataset manifest parameter replacements for ISSP project configuration",
+    "path_mappings": {
+        "description": "Define path mappings for ASCII array replacements",
+        "old_base_path": "",
+        "new_base_path": ""
+    },
+    "replacements": [
+        {
+            "description": "Enable CAN usage",
+            "from": "\"use_can\": 0",
+            "to": "\"use_can\": 1"
+        },
+        {
+            "description": "Change input source from file (0) to live source (2)",
+            "from": "\"input_source\": 2",
+            "to": "\"input_source\": 0"
+        },
+        {
+            "description": "Update camera brightness setting",
+            "from": "\"fg_aec_tar_bright\": 60",  
+            "to": "\"fg_aec_tar_bright\": 20"
+        },
+        {
+            "description": "Update camera brightness setting",
+            "from": "\"fg_aec_tar_bright\": 18",  
+            "to": "\"fg_aec_tar_bright\": 20"
+        }
+    ],
+    "ascii_path_replacements": {
+        "description": "These paths will be automatically converted to ASCII arrays and replaced",
+        "note": "The script will find all '*_path' fields with ASCII arrays and replace the old paths with new ones",
+        "automatic_replacements": [
+            {
+                "description": "Replace seatbelt_model.onnx with seatbelt_misuse_model.onnx (complete path change)",
+                "old_path": "/home/issp/workspace/issp_oms_models/seatbelt_model.onnx",
+                "new_path": "/home/issp/workspace/issp_oms_models/seatbelt_misuse_model.onnx"
+            },
+            {
+                "description": "Replace old '/home/iss/' paths with new '/home/issp/workspace/' paths (old filename)",
+                "old_path": "/home/iss/issp_oms_models/seatbelt_model.onnx",
+                "new_path": "/home/issp/workspace/issp_oms_models/seatbelt_misuse_model.onnx"
+            },
+            {
+                "description": "Replace old '/home/iss/' paths with new '/home/issp/workspace/' paths (correct filename)",
+                "old_path": "/home/iss/issp_oms_models/seatbelt_misuse_model.onnx",
+                "new_path": "/home/issp/workspace/issp_oms_models/seatbelt_misuse_model.onnx"
+            }
+        ]
+    }
+}

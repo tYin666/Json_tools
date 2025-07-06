@@ -41,6 +41,7 @@ if [ "$if_setsettings" = true ]; then
     python set_settings.py "$PRJ_Folder"
     exit_code=$?
     
+    
     if [ $exit_code -eq 0 ]; then
         echo "Configuration completed successfully!"
         cd "$PRJ_Folder" || exit 1

@@ -23,17 +23,12 @@ def check_json_file(filepath):
         all_errors = find_all_json_errors(content)
         
         if all_errors:
-            print(f"Found {len(all_errors)} error(s):")
-            print_errors_table(all_errors)
-            print_detailed_errors(all_errors)
+            print(f"Found {len(all_errors)} syntax error(s) at these lines:")
+            for error in all_errors:
+                print(f"Line {error['line']}: {error['type']}")
         else:
             # Fallback to original error if comprehensive analysis fails
-            print(f"Error: {first_error.msg}")
-            print(f"Line: {first_error.lineno}, Column: {first_error.colno}")
-            
-            lines = content.splitlines()
-            if 1 <= first_error.lineno <= len(lines):
-                print(f"Problematic line: {lines[first_error.lineno - 1]}")
+            print(f"Syntax error at Line {first_error.lineno}, Column {first_error.colno}: {first_error.msg}")
     
     except FileNotFoundError:
         print(f"❌ Error: File '{filepath}' not found.")
@@ -167,42 +162,13 @@ def analyze_line_for_errors(line, line_num, all_lines):
     
     return errors
 
-def print_errors_table(errors):
-    """Print errors in a formatted table"""
-    print("=" * 120)
-    print("📊 ERROR SUMMARY TABLE")
-    print("=" * 120)
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python checkJson.py <json_file_path>")
+        sys.exit(1)
     
-    # Table headers
-    headers = ["ID", "Line", "Col", "Error Type", "Issue Description", "Severity"]
-    col_widths = [4, 6, 5, 20, 50, 10]
-    
-    # Print header
-    header_row = "| "
-    for i, (header, width) in enumerate(zip(headers, col_widths)):
-        header_row += f"{header:<{width}} | "
-    print(header_row)
-    
-    # Print separator
-    separator = "+"
-    for width in col_widths:
-        separator += "-" * (width + 2) + "+"
-    print(separator)
-    
-    # Print each error row
-    for i, error in enumerate(errors, 1):
-        error_type = classify_error_type(error['message'])
-        severity = get_error_severity(error['message'])
-        description = truncate_text(error['message'], 48)
-        
-        row = f"| {i:<4} | {error['line']:<6} | {error['column']:<5} | {error_type:<20} | {description:<50} | {severity:<10} |"
-        print(row)
-    
-    print(separator)
-    print(f"Total Errors: {len(errors)}")
-    print()
-
-def print_detailed_errors(errors):
+    json_file = sys.argv[1]
+    check_json_file(json_file)
     """Print detailed error information"""
     print("=" * 80)
     print("🔍 DETAILED ERROR ANALYSIS")
